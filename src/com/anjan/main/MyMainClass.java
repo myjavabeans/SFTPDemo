@@ -9,6 +9,9 @@ import java.io.OutputStream;
 import java.nio.file.Files;
 import java.util.Scanner;
 
+import org.apache.log4j.Logger;
+
+import com.anjan.log4j.LoggerFile;
 import com.anjan.pojo.ServerDetails;
 import com.jcraft.jsch.Channel;
 import com.jcraft.jsch.ChannelSftp;
@@ -18,14 +21,25 @@ import com.jcraft.jsch.Session;
 import com.jcraft.jsch.SftpProgressMonitor;
 
 public class MyMainClass {
+	
+	private static String baseDir = ""; // Update the Base Directory
+	private static String processId = "";
+	private static String logPath = "";
+	
+	static{
+		createBaseDir();
+		
+		logPath = baseDir+File.separator+"logs"+File.separator;
+		
+		System.setProperty("logfile.name", logPath+"sftplog.txt");
+	}
 
+	static Logger logger = Logger.getLogger(MyMainClass.class);
+	
 	private static JSch jsch;
 	private static Session session;
 	private static Channel channel;
 	private static ChannelSftp sftpChannel;
-
-	private static String baseDir = ""; // Update the Base Directory
-	private static String processId = "";
 
 	private static File newFile = null;
 
@@ -55,7 +69,7 @@ public class MyMainClass {
 	 */
 	public static void connect(ServerDetails serverDetails) {
 
-		System.out.println("connecting..." + serverDetails.getHostName());
+		logger.info("connecting..." + serverDetails.getHostName());
 		try {
 			jsch = new JSch();
 			session = jsch.getSession(serverDetails.getUserName(), serverDetails.getHostName(),
@@ -69,7 +83,7 @@ public class MyMainClass {
 			sftpChannel = (ChannelSftp) channel;
 
 		} catch (JSchException e) {
-			e.printStackTrace();
+			logger.error("JschException", e);
 		}
 
 	}
@@ -78,10 +92,20 @@ public class MyMainClass {
 	 * This method is used for disconnecting Sftp
 	 */
 	public static void disconnect() {
-		System.out.println("disconnecting...");
-		sftpChannel.disconnect();
-		channel.disconnect();
-		session.disconnect();
+		logger.info("disconnecting...");
+		
+		if(sftpChannel != null){
+			sftpChannel.disconnect();
+		}
+		
+		if(channel != null){
+			channel.disconnect();
+		}
+		
+		if(session != null){
+			session.disconnect();
+		}
+		
 	}
 
 	/**
@@ -98,7 +122,7 @@ public class MyMainClass {
 		connect(serverDetails);
 		try {
 			
-			Files.copy(file.toPath(), new File(baseDir + processId + "/"+file.getName()+".processed").toPath());
+			Files.copy(file.toPath(), new File(baseDir + processId + File.separator +file.getName()+".processed").toPath());
 			
 			// Change to output directory
 			sftpChannel.cd(serverDetails.getFileLocation());
@@ -108,10 +132,10 @@ public class MyMainClass {
 			sftpChannel.put(fis, file.getName(), monitor);
 
 			fis.close();
-			System.out.println("File uploaded successfully to " + serverDetails.getFileLocation());
+			logger.info("File uploaded successfully to " + serverDetails.getFileLocation());
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			logger.error("Exception", e);
 			return false;
 		} finally {
 			disconnect();
@@ -141,7 +165,7 @@ public class MyMainClass {
 			File file = new File((serverDetails.getFileLocation()));
 			bis = new BufferedInputStream(sftpChannel.get(file.getName(), monitor));
 
-			newFile = new File(baseDir + processId + "/" + file.getName());
+			newFile = new File(baseDir + processId + File.separator + file.getName());
 
 			// Download file
 			OutputStream os = new FileOutputStream(newFile);
@@ -152,10 +176,10 @@ public class MyMainClass {
 			}
 			bis.close();
 			bos.close();
-			System.out.println("File downloaded successfully to " + newFile.getAbsolutePath());
+			logger.info("File downloaded successfully to " + newFile.getAbsolutePath());
 
 		} catch (Exception e) {
-			e.printStackTrace();
+			logger.error("Exception", e);
 			return false;
 		} finally {
 			disconnect();
@@ -180,12 +204,12 @@ public class MyMainClass {
 			flag = uploadFile(destServer, newFile);
 
 			if (flag) {
-				System.out.println("Transfer Process ID - [" + processId + "] Successful!!!");
+				logger.info("Transfer Process ID - [" + processId + "] Successful!!!");
 			} else {
-				System.out.println("Transfer Process ID - [" + processId + "] Failed!!!");
+				logger.info("Transfer Process ID - [" + processId + "] Failed!!!");
 			}
 		} else {
-			System.out.println("Aborted Process ID - [" + processId + "] !!!");
+			logger.error("Aborted Process ID - [" + processId + "] !!!");
 		}
 
 	}
@@ -247,6 +271,7 @@ public class MyMainClass {
 		file.mkdir();
 
 		System.out.println("All files are present at " + file.getAbsolutePath());
+		logger.info("All files are present at " + file.getAbsolutePath());
 
 	}
 
@@ -256,14 +281,15 @@ public class MyMainClass {
 
 		if (os.indexOf("win") >= 0) {
 
-			baseDir = "C:/SFTPDemo/";
+			baseDir = "C:"+File.separator+"SFTPDemo"+File.separator;
 
 		} else if (os.indexOf("nix") >= 0 || os.indexOf("nux") >= 0 || os.indexOf("aix") > 0) {
 
-			baseDir = "/opt/SFTPDemo/";
+			baseDir = File.separator+"opt"+File.separator+"SFTPDemo"+File.separator;
 
 		} else {
 			System.out.println("Error!!! Application is not Supported in " + os);
+			logger.error("Error!!! Application is not Supported in " + os);
 			System.exit(0);
 		}
 
@@ -273,19 +299,25 @@ public class MyMainClass {
 			if (!directory.exists()) {
 				directory.mkdirs();
 			}
+			
+		}
+		
+		File logDir = new File(logPath);
+		if (!logDir.exists()) {
+			logDir.mkdirs();
 		}
 
 	}
 
 	public static void main(String args[]) {
+		
+		LoggerFile.setUpLogger(logPath);
 
 		System.out.println("*************************************************************");
 		System.out.println("Disclaimer : SFTP Application Supports only Windows and Linux");
 		System.out.println("*************************************************************");
-
-		createBaseDir();
 		
-		System.out.println("All Application Files is present at "+baseDir);
+		logger.info("All Application Files is present at "+baseDir);
 
 		Scanner scanner = new Scanner(System.in);
 		int ch = 0;
@@ -315,8 +347,10 @@ public class MyMainClass {
 
 				if (flag) {
 					System.out.println("Upload Process ID - [" + processId + "] Successful!!!");
+					logger.info("Upload Process ID - [" + processId + "] Successful!!!");
 				} else {
 					System.out.println("Upload Process ID - [" + processId + "] Failed!!!");
+					logger.error("Upload Process ID - [" + processId + "] Failed!!!");
 				}
 
 				break;
@@ -329,8 +363,10 @@ public class MyMainClass {
 
 				if (flag) {
 					System.out.println("Download Process ID - [" + processId + "] Successful!!!");
+					logger.info("Download Process ID - [" + processId + "] Successful!!!");
 				} else {
 					System.out.println("Download Process ID - [" + processId + "] Failed!!!");
+					logger.error("Download Process ID - [" + processId + "] Failed!!!");
 				}
 
 				break;
